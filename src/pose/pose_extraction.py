@@ -103,6 +103,10 @@ def extract_pose_sequence(
                     # #endregion
                     break
                 continue
+    except Exception as exc:
+        print(f"[WARN] Unexpected video processing error {video_path}: {exc}")
+        _dbg("H3", "pose_extraction.py:99", "processing_error", {"video_path": str(video_path), "error": str(exc)})
+        return np.zeros((0, N_KEYPOINTS, N_CHANNELS), dtype=np.float32)
             if not ret:
                 # #region agent log
                 _dbg("H3", "pose_extraction.py:96", "read_ret_false_break", {"video_path": str(video_path), "frame_idx": frame_idx})

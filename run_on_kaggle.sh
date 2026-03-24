@@ -14,6 +14,8 @@ echo "[INFO] LE2I_OUTPUT_ROOT=${LE2I_OUTPUT_ROOT}"
 
 # Install dependencies
 python -m pip install --upgrade pip
+# Ensure no conflicting non-headless OpenCV builds are installed.
+python -m pip uninstall -y opencv-python opencv-contrib-python || true
 python -m pip install -r requirements.txt
 # Ensure only headless OpenCV is installed. This is safe for Kaggle and avoids GUI backend.
 python -m pip install --upgrade opencv-python-headless
