@@ -2,6 +2,7 @@
 
 import os
 from pathlib import Path
+from typing import Iterable
 
 # Le2i video metadata
 FPS = 25
@@ -30,9 +31,27 @@ SAVGOL_WINDOW = 5
 SAVGOL_POLYORDER = 2
 ADL_STRIDE = 100
 
-# Global path management (Kaggle-first)
-INPUT_ROOT = Path("/kaggle/input/datasets/tuyenldvn/falldataset-imvia")
-OUTPUT_ROOT = Path("/kaggle/working")
+def _first_existing_path(candidates: Iterable[Path]) -> Path:
+    for p in candidates:
+        if p.exists():
+            return p
+    return next(iter(candidates))
+
+
+# Global path management (Kaggle-first, with fallback auto-detection)
+_env_input_root = os.getenv("LE2I_INPUT_ROOT", "").strip()
+if _env_input_root:
+    INPUT_ROOT = Path(_env_input_root)
+else:
+    INPUT_ROOT = _first_existing_path(
+        [
+            Path("/kaggle/input/datasets/tuyenldvn/falldataset-imvia"),
+            Path("/kaggle/input/le2i-fall-dataset"),
+            Path("/kaggle/input/falldataset-imvia"),
+        ]
+    )
+
+OUTPUT_ROOT = Path(os.getenv("LE2I_OUTPUT_ROOT", "/kaggle/working"))
 
 # Output sub-directories
 OUTPUT_DATA_PROCESSED = OUTPUT_ROOT / "data" / "processed"
