@@ -16,6 +16,10 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from src.config import FRAME_HEIGHT, FRAME_WIDTH, N_CHANNELS, N_KEYPOINTS
 
+# Stabilize OpenCV/FFmpeg on Kaggle to reduce native decode crashes.
+os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "threads;1")
+cv2.setNumThreads(0)
+
 
 def extract_pose_sequence(
     model: YOLO,
@@ -32,7 +36,10 @@ def extract_pose_sequence(
     video_path = Path(video_path)
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
-    cap = cv2.VideoCapture(str(video_path))
+    cap = cv2.VideoCapture(str(video_path), cv2.CAP_FFMPEG)
+    if not cap.isOpened():
+        # Fallback backend if FFmpeg backend is unavailable.
+        cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
         raise RuntimeError(f"Cannot open video: {video_path}")
 
@@ -44,13 +51,39 @@ def extract_pose_sequence(
         if show_progress
         else None
     )
+    bad_reads = 0
     try:
         while True:
-            ret, frame = cap.read()
+            try:
+                ret, frame = cap.read()
+            except Exception:
+                # Some broken AVI files can trigger decoder exceptions.
+                bad_reads += 1
+                if bad_reads >= 3:
+                    break
+                continue
             if not ret:
                 break
+            if frame is None or frame.size == 0:
+                bad_reads += 1
+                if bad_reads >= 3:
+                    break
+                continue
+            bad_reads = 0
 
-            result = model.predict(frame, verbose=False, imgsz=320, conf=0.15, device=device)[0]
+            try:
+                # Force non-GUI inference mode to avoid display-related crashes on Kaggle.
+                result = model.predict(
+                    frame,
+                    verbose=False,
+                    imgsz=320,
+                    conf=0.15,
+                    device=device,
+                    show=False,
+                )[0]
+            except Exception:
+                # Skip problematic frame-level inference and continue stream.
+                continue
 
             pose = np.full((N_KEYPOINTS, N_CHANNELS), np.nan, dtype=np.float32)
             pose[:, 2] = 0.0
@@ -76,6 +109,9 @@ def extract_pose_sequence(
             frames_pose.append(pose)
             if pbar:
                 pbar.update(1)
+            # Periodic cleanup for long videos on limited Kaggle RAM.
+            if len(frames_pose) % 200 == 0:
+                gc.collect()
     finally:
         if pbar:
             pbar.close()
