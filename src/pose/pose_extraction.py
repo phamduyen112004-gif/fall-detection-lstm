@@ -1,8 +1,10 @@
 """Extract per-frame pose from video using YOLO pose estimation."""
 
 import gc
+import json
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
@@ -20,6 +22,22 @@ from src.config import FRAME_HEIGHT, FRAME_WIDTH, N_CHANNELS, N_KEYPOINTS
 os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "threads;1")
 cv2.setNumThreads(0)
 
+DEBUG_LOG_PATH = Path(__file__).resolve().parents[2] / "debug-b9631d.log"
+
+
+def _dbg(hypothesis_id: str, location: str, message: str, data: Optional[dict] = None, run_id: str = "pre-fix") -> None:
+    payload = {
+        "sessionId": "b9631d",
+        "runId": run_id,
+        "hypothesisId": hypothesis_id,
+        "location": location,
+        "message": message,
+        "data": data or {},
+        "timestamp": int(time.time() * 1000),
+    }
+    with DEBUG_LOG_PATH.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(payload, ensure_ascii=True) + "\n")
+
 
 def extract_pose_sequence(
     model: YOLO,
@@ -36,11 +54,23 @@ def extract_pose_sequence(
     video_path = Path(video_path)
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
+    # #region agent log
+    _dbg("H1", "pose_extraction.py:54", "extract_pose_sequence_enter", {"video_path": str(video_path), "device": device})
+    # #endregion
     cap = cv2.VideoCapture(str(video_path), cv2.CAP_FFMPEG)
+    # #region agent log
+    _dbg("H2", "pose_extraction.py:58", "cap_open_ffmpeg", {"is_opened": bool(cap.isOpened())})
+    # #endregion
     if not cap.isOpened():
         # Fallback backend if FFmpeg backend is unavailable.
         cap = cv2.VideoCapture(str(video_path))
+        # #region agent log
+        _dbg("H2", "pose_extraction.py:63", "cap_open_fallback", {"is_opened": bool(cap.isOpened())})
+        # #endregion
     if not cap.isOpened():
+        # #region agent log
+        _dbg("H2", "pose_extraction.py:67", "cap_open_failed", {"video_path": str(video_path)})
+        # #endregion
         raise RuntimeError(f"Cannot open video: {video_path}")
 
     frames_pose: list[np.ndarray] = []
@@ -52,6 +82,7 @@ def extract_pose_sequence(
         else None
     )
     bad_reads = 0
+    frame_idx = 0
     try:
         while True:
             try:
@@ -60,16 +91,26 @@ def extract_pose_sequence(
                 # Some broken AVI files can trigger decoder exceptions.
                 bad_reads += 1
                 if bad_reads >= 3:
+                    # #region agent log
+                    _dbg("H3", "pose_extraction.py:91", "bad_read_exception_break", {"video_path": str(video_path), "bad_reads": bad_reads, "frame_idx": frame_idx})
+                    # #endregion
                     break
                 continue
             if not ret:
+                # #region agent log
+                _dbg("H3", "pose_extraction.py:96", "read_ret_false_break", {"video_path": str(video_path), "frame_idx": frame_idx})
+                # #endregion
                 break
             if frame is None or frame.size == 0:
                 bad_reads += 1
                 if bad_reads >= 3:
+                    # #region agent log
+                    _dbg("H3", "pose_extraction.py:103", "empty_frame_break", {"video_path": str(video_path), "bad_reads": bad_reads, "frame_idx": frame_idx})
+                    # #endregion
                     break
                 continue
             bad_reads = 0
+            frame_idx += 1
 
             try:
                 # Force non-GUI inference mode to avoid display-related crashes on Kaggle.
@@ -83,6 +124,9 @@ def extract_pose_sequence(
                 )[0]
             except Exception:
                 # Skip problematic frame-level inference and continue stream.
+                # #region agent log
+                _dbg("H4", "pose_extraction.py:122", "yolo_predict_exception", {"video_path": str(video_path), "frame_idx": frame_idx})
+                # #endregion
                 continue
 
             pose = np.full((N_KEYPOINTS, N_CHANNELS), np.nan, dtype=np.float32)
@@ -112,11 +156,17 @@ def extract_pose_sequence(
             # Periodic cleanup for long videos on limited Kaggle RAM.
             if len(frames_pose) % 200 == 0:
                 gc.collect()
+                # #region agent log
+                _dbg("H5", "pose_extraction.py:151", "periodic_gc", {"video_path": str(video_path), "frames_pose": len(frames_pose), "frame_idx": frame_idx})
+                # #endregion
     finally:
         if pbar:
             pbar.close()
         cap.release()
         gc.collect()
+        # #region agent log
+        _dbg("H1", "pose_extraction.py:159", "extract_pose_sequence_exit", {"video_path": str(video_path), "frames_pose": len(frames_pose), "frame_idx": frame_idx})
+        # #endregion
 
     if not frames_pose:
         return np.zeros((0, N_KEYPOINTS, N_CHANNELS), dtype=np.float32)
