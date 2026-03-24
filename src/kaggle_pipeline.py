@@ -22,9 +22,15 @@ def _check_paths():
     print(f"[INFO] OUTPUT_MODELS: {OUTPUT_MODELS}")
     print(f"[INFO] OUTPUT_REPORTS: {OUTPUT_REPORTS}")
     if not Path(INPUT_ROOT).exists():
+        sample_paths = []
+        base = Path("/kaggle/input")
+        if base.exists():
+            sample_paths = [str(p) for p in base.iterdir() if p.is_dir()]
         raise FileNotFoundError(
             f"Dataset root not found: {INPUT_ROOT}\n"
-            "Please attach Le2i dataset in Kaggle Input."
+            "Please attach Le2i dataset in Kaggle Input.\n"
+            f"Available /kaggle/input subfolders: {sample_paths}\n"
+            "If dataset is at a custom location, set LE2I_INPUT_ROOT environment variable."
         )
 
     if not str(INPUT_ROOT).startswith("/kaggle/input"):
@@ -32,6 +38,7 @@ def _check_paths():
 
     if not str(OUTPUT_ROOT).startswith("/kaggle/working"):
         print(f"[WARN] OUTPUT_ROOT is not under /kaggle/working: {OUTPUT_ROOT}")
+
     pairs = collect_le2i_video_annotation_pairs(INPUT_ROOT)
     print(f"[INFO] Video pairs discovered: {len(pairs)}")
     if not pairs:
