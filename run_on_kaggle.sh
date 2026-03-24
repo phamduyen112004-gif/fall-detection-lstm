@@ -20,6 +20,9 @@ python -m pip install -r requirements.txt
 # Ensure only headless OpenCV is installed. This is safe for Kaggle and avoids GUI backend.
 python -m pip install --upgrade opencv-python-headless
 
+# Lock gym version to avoid dopamine-r1 dependency conflict
+python -m pip install "gym<=0.25.2"
+
 # Create output dirs
 mkdir -p "$LE2I_OUTPUT_ROOT" 
 mkdir -p "$LE2I_OUTPUT_ROOT/data/processed" 

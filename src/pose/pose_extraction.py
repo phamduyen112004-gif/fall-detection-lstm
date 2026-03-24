@@ -92,39 +92,31 @@ def extract_pose_sequence(
                 ret, frame = cap.read()
             except Exception as exc:
                 # Some broken AVI files can trigger decoder exceptions.
-                if "Header missing" in str(exc):
-                    print(f"[WARN] Header missing or broken video {video_path}: {exc}")
-                    _dbg("H3", "pose_extraction.py:89", "header_missing", {"video_path": str(video_path), "error": str(exc)})
+                err_str = str(exc)
+                if "Header missing" in err_str or "corrupted double-linked list" in err_str:
+                    print(f"[WARN] Corrupt video {video_path}: {err_str}")
+                    _dbg("H3", "pose_extraction.py:89", "header_missing_or_corrupt", {"video_path": str(video_path), "error": err_str})
                     return np.zeros((0, N_KEYPOINTS, N_CHANNELS), dtype=np.float32)
                 bad_reads += 1
                 if bad_reads >= 3:
-                    # #region agent log
                     _dbg("H3", "pose_extraction.py:91", "bad_read_exception_break", {"video_path": str(video_path), "bad_reads": bad_reads, "frame_idx": frame_idx})
-                    # #endregion
                     break
                 continue
-    except Exception as exc:
-        print(f"[WARN] Unexpected video processing error {video_path}: {exc}")
-        _dbg("H3", "pose_extraction.py:99", "processing_error", {"video_path": str(video_path), "error": str(exc)})
-        return np.zeros((0, N_KEYPOINTS, N_CHANNELS), dtype=np.float32)
+
             if not ret:
-                # #region agent log
                 _dbg("H3", "pose_extraction.py:96", "read_ret_false_break", {"video_path": str(video_path), "frame_idx": frame_idx})
-                # #endregion
                 break
             if frame is None or frame.size == 0:
                 bad_reads += 1
                 if bad_reads >= 3:
-                    # #region agent log
                     _dbg("H3", "pose_extraction.py:103", "empty_frame_break", {"video_path": str(video_path), "bad_reads": bad_reads, "frame_idx": frame_idx})
-                    # #endregion
                     break
                 continue
+
             bad_reads = 0
             frame_idx += 1
 
             try:
-                # Force non-GUI inference mode to avoid display-related crashes on Kaggle.
                 result = model.predict(
                     frame,
                     verbose=False,
@@ -133,11 +125,8 @@ def extract_pose_sequence(
                     device=device,
                     show=False,
                 )[0]
-            except Exception:
-                # Skip problematic frame-level inference and continue stream.
-                # #region agent log
-                _dbg("H4", "pose_extraction.py:122", "yolo_predict_exception", {"video_path": str(video_path), "frame_idx": frame_idx})
-                # #endregion
+            except Exception as exc:
+                _dbg("H4", "pose_extraction.py:122", "yolo_predict_exception", {"video_path": str(video_path), "frame_idx": frame_idx, "error": str(exc)})
                 continue
 
             pose = np.full((N_KEYPOINTS, N_CHANNELS), np.nan, dtype=np.float32)
@@ -164,12 +153,18 @@ def extract_pose_sequence(
             frames_pose.append(pose)
             if pbar:
                 pbar.update(1)
-            # Periodic cleanup for long videos on limited Kaggle RAM.
+
             if len(frames_pose) % 200 == 0:
                 gc.collect()
                 # #region agent log
                 _dbg("H5", "pose_extraction.py:151", "periodic_gc", {"video_path": str(video_path), "frames_pose": len(frames_pose), "frame_idx": frame_idx})
                 # #endregion
+
+    except Exception as exc:
+        print(f"[WARN] Unexpected processing error {video_path}: {exc}")
+        _dbg("H3", "pose_extraction.py:144", "unexpected_processing_error", {"video_path": str(video_path), "error": str(exc)})
+        return np.zeros((0, N_KEYPOINTS, N_CHANNELS), dtype=np.float32)
+
     finally:
         if pbar:
             pbar.close()
