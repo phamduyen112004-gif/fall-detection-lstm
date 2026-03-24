@@ -8,6 +8,9 @@ import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
+# Enforce headless mode for Qt backend so Kaggle never opens a GUI window.
+os.environ['QT_QPA_PLATFORM'] = 'offscreen'
+
 import cv2
 import numpy as np
 import torch
@@ -63,7 +66,7 @@ def extract_pose_sequence(
     # #endregion
     if not cap.isOpened():
         # Fallback backend if FFmpeg backend is unavailable.
-        cap = cv2.VideoCapture(str(video_path))
+        cap = cv2.VideoCapture(str(video_path), cv2.CAP_FFMPEG)
         # #region agent log
         _dbg("H2", "pose_extraction.py:63", "cap_open_fallback", {"is_opened": bool(cap.isOpened())})
         # #endregion
@@ -87,8 +90,12 @@ def extract_pose_sequence(
         while True:
             try:
                 ret, frame = cap.read()
-            except Exception:
+            except Exception as exc:
                 # Some broken AVI files can trigger decoder exceptions.
+                if "Header missing" in str(exc):
+                    print(f"[WARN] Header missing or broken video {video_path}: {exc}")
+                    _dbg("H3", "pose_extraction.py:89", "header_missing", {"video_path": str(video_path), "error": str(exc)})
+                    return np.zeros((0, N_KEYPOINTS, N_CHANNELS), dtype=np.float32)
                 bad_reads += 1
                 if bad_reads >= 3:
                     # #region agent log
@@ -163,6 +170,7 @@ def extract_pose_sequence(
         if pbar:
             pbar.close()
         cap.release()
+        cv2.destroyAllWindows()
         gc.collect()
         # #region agent log
         _dbg("H1", "pose_extraction.py:159", "extract_pose_sequence_exit", {"video_path": str(video_path), "frames_pose": len(frames_pose), "frame_idx": frame_idx})

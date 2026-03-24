@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Deque, Dict, Optional, Tuple
 
+os.environ['QT_QPA_PLATFORM'] = 'offscreen'
+
 import cv2
 import numpy as np
 import requests

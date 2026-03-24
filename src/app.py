@@ -9,6 +9,7 @@ Dashboard nay giup kiem chung mo hinh tren video co san ma khong can webcam:
 
 from __future__ import annotations
 
+import os
 import queue
 import tempfile
 import threading
@@ -17,6 +18,8 @@ from collections import deque
 from datetime import datetime
 from pathlib import Path
 from typing import Deque, Dict, List, Optional
+
+os.environ['QT_QPA_PLATFORM'] = 'offscreen'
 
 import cv2
 import numpy as np
@@ -152,7 +155,7 @@ class InferenceWorker(threading.Thread):
         frame = packet["frame"]
         ts = packet["timestamp"]
 
-        result = self.yolo_model.predict(frame, verbose=False, imgsz=320, conf=0.15, device=self.device)[0]
+        result = self.yolo_model.predict(frame, verbose=False, imgsz=320, conf=0.15, device=self.device, show=False)[0]
         parsed = _extract_pose_from_result(result)
         pose = parsed["pose"]
         bbox = parsed["bbox"]
@@ -389,7 +392,14 @@ def main():
 
         yolo_model = load_yolo()
         bilstm_model = load_bilstm(model_path)
-        cap = cv2.VideoCapture(video_path)
+        try:
+            cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG)
+        except Exception as exc:
+            st.warning(f"[WARN] Cannot open video {video_path}: {exc}")
+            if temp_file is not None:
+                Path(temp_file.name).unlink(missing_ok=True)
+            return
+
         if not cap.isOpened():
             st.error("Khong mo duoc video.")
             if temp_file is not None:

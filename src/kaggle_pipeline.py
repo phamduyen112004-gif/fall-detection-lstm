@@ -8,7 +8,7 @@ from time import perf_counter
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from src.config import INPUT_ROOT, OUTPUT_DATA_FEATURES, OUTPUT_DATA_PROCESSED, OUTPUT_MODELS, OUTPUT_REPORTS
+from src.config import INPUT_ROOT, OUTPUT_ROOT, OUTPUT_DATA_FEATURES, OUTPUT_DATA_PROCESSED, OUTPUT_MODELS, OUTPUT_REPORTS
 from src.features import feature_engineering
 from src import kaggle_sanity
 from src.training import train_model
@@ -26,6 +26,12 @@ def _check_paths():
             f"Dataset root not found: {INPUT_ROOT}\n"
             "Please attach Le2i dataset in Kaggle Input."
         )
+
+    if not str(INPUT_ROOT).startswith("/kaggle/input"):
+        print(f"[WARN] INPUT_ROOT is not under /kaggle/input: {INPUT_ROOT}")
+
+    if not str(OUTPUT_ROOT).startswith("/kaggle/working"):
+        print(f"[WARN] OUTPUT_ROOT is not under /kaggle/working: {OUTPUT_ROOT}")
     pairs = collect_le2i_video_annotation_pairs(INPUT_ROOT)
     print(f"[INFO] Video pairs discovered: {len(pairs)}")
     if not pairs:
