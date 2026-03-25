@@ -89,7 +89,7 @@ if INPUT_ROOT.exists():
     video_files = list(INPUT_ROOT.rglob("*.avi"))
     print(f"✓ Dataset found: {len(video_files)} video files")
     print(f"✓ Location: {INPUT_ROOT}")
-    
+
     # Show structure
     print("\nDataset structure:")
     for item in sorted(INPUT_ROOT.iterdir())[:5]:
@@ -99,48 +99,40 @@ else:
     print("⚠️  Ensure 'falldataset-imvia' is attached to Kaggle Input")
 
 # ============================================================================
-# CELL 5: Run the Pipeline
+# CELL 5: Extract Features Only (Full 130 videos)
 # ============================================================================
 
 print("\n" + "="*60)
-print("🚀 Running Fall Detection LSTM Pipeline")
+print("🚀 Extracting Features from 130 Videos (Full)")
 print("="*60 + "\n")
 
 # Add to path
 sys.path.insert(0, "/kaggle/working")
 
-# Force CPU mode + small sample for stability on Kaggle GPU/driver issues
+# Force CPU mode + full dataset
 os.environ["LE2I_DEVICE"] = "cpu"
-os.environ["LE2I_MAX_VIDEOS"] = "1"
+os.environ["LE2I_MAX_VIDEOS"] = "130"
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 try:
     # Import pipeline
     from src.kaggle_pipeline import main
-    
+
     # Setup arguments
-    # Tùy chọn: 
-    # - "--skip-extract": Chỉ huấn luyện (bỏ trích xuất pose)
-    # - "--skip-train": Chỉ trích xuất pose (bỏ huấn luyện)  
-    # - "--skip-sanity": Bỏ qua sanity checks
-    # - "--train-only": Chỉ huấn luyện
-    # - "--extract-only": Chỉ trích xuất
-    
     sys.argv = ["kaggle", "--extract-only", "--skip-sanity"]
-    
+
     # Run
     main()
-    
+
     print("\n" + "="*60)
-    print("✅ PIPELINE COMPLETED SUCCESSFULLY!")
+    print("✅ EXTRACTION COMPLETED SUCCESSFULLY!")
     print("="*60)
-    
+
     # Show output location
     print(f"\n📊 Results saved to {OUTPUT_ROOT}:")
-    print(f"  - Models: {OUTPUT_ROOT / 'models'}")
     print(f"  - Features: {OUTPUT_ROOT / 'data' / 'features'}")
-    print(f"  - Reports: {OUTPUT_ROOT / 'reports'}")
-    
+    print(f"  - Processed data: {OUTPUT_ROOT / 'data' / 'processed'}")
+
 except Exception as e:
     print(f"\n❌ ERROR: {e}")
     import traceback
@@ -152,7 +144,7 @@ except Exception as e:
 
 import os
 
-print("\n📂 Final output structure:")
+print("\n📂 Current output structure:")
 for root, dirs, files in os.walk(OUTPUT_ROOT):
     level = root.replace(str(OUTPUT_ROOT), "").count(os.sep)
     indent = " " * 2 * level
@@ -162,3 +154,163 @@ for root, dirs, files in os.walk(OUTPUT_ROOT):
         print(f"{sub_indent}📄 {file}")
     if len(files) > 5:
         print(f"{sub_indent}... và {len(files) - 5} file khác")
+
+# ============================================================================
+# CELL 7: Train Model (Full 130 videos)
+# ============================================================================
+
+print("\n" + "="*60)
+print("🚀 Training Fall Detection LSTM Model (Full)")
+print("="*60 + "\n")
+
+# Add to path
+sys.path.insert(0, "/kaggle/working")
+
+# Force CPU mode + full dataset
+os.environ["LE2I_DEVICE"] = "cpu"
+os.environ["LE2I_MAX_VIDEOS"] = "130"
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+
+try:
+    # Import pipeline
+    from src.kaggle_pipeline import main
+
+    # Setup arguments
+    sys.argv = ["kaggle", "--skip-extract", "--train-only", "--skip-sanity"]
+
+    # Run
+    main()
+
+    print("\n" + "="*60)
+    print("✅ TRAINING COMPLETED SUCCESSFULLY!")
+    print("="*60)
+
+    # Show output location
+    print(f"\n📊 Results saved to {OUTPUT_ROOT}:")
+    print(f"  - Models: {OUTPUT_ROOT / 'models'}")
+    print(f"  - Reports: {OUTPUT_ROOT / 'reports'}")
+
+except Exception as e:
+    print(f"\n❌ ERROR: {e}")
+    import traceback
+    traceback.print_exc()
+
+# ============================================================================
+# CELL 8: Full Extract (130 videos)
+# ============================================================================
+
+print("\n" + "="*60)
+print("🚀 Extracting Features from 130 Videos (Full)")
+print("="*60 + "\n")
+
+# Add to path
+sys.path.insert(0, "/kaggle/working")
+
+# Force CPU mode + full dataset
+os.environ["LE2I_DEVICE"] = "cpu"
+os.environ["LE2I_MAX_VIDEOS"] = "130"  # Full dataset
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+
+try:
+    # Import pipeline
+    from src.kaggle_pipeline import main
+
+    # Setup arguments
+    sys.argv = ["kaggle", "--extract-only", "--skip-sanity"]
+
+    # Run
+    main()
+
+    print("\n" + "="*60)
+    print("✅ EXTRACTION COMPLETED SUCCESSFULLY!")
+    print("="*60)
+
+    # Show output location
+    print(f"\n📊 Results saved to {OUTPUT_ROOT}:")
+    print(f"  - Features: {OUTPUT_ROOT / 'data' / 'features'}")
+    print(f"  - Processed data: {OUTPUT_ROOT / 'data' / 'processed'}")
+
+except Exception as e:
+    print(f"\n❌ ERROR: {e}")
+    import traceback
+    traceback.print_exc()
+
+# ============================================================================
+# CELL 9: Full Train (130 videos)
+# ============================================================================
+
+print("\n" + "="*60)
+print("🚀 Training Fall Detection LSTM Model (Full)")
+print("="*60 + "\n")
+
+# Add to path
+sys.path.insert(0, "/kaggle/working")
+
+# Force CPU mode + full dataset
+os.environ["LE2I_DEVICE"] = "cpu"
+os.environ["LE2I_MAX_VIDEOS"] = "130"  # Full dataset
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+
+try:
+    # Import pipeline
+    from src.kaggle_pipeline import main
+
+    # Setup arguments
+    sys.argv = ["kaggle", "--skip-extract", "--train-only", "--skip-sanity"]
+
+    # Run
+    main()
+
+    print("\n" + "="*60)
+    print("✅ TRAINING COMPLETED SUCCESSFULLY!")
+    print("="*60)
+
+    # Show output location
+    print(f"\n📊 Results saved to {OUTPUT_ROOT}:")
+    print(f"  - Models: {OUTPUT_ROOT / 'models'}")
+    print(f"  - Reports: {OUTPUT_ROOT / 'reports'}")
+
+except Exception as e:
+    print(f"\n❌ ERROR: {e}")
+    import traceback
+    traceback.print_exc()
+
+# ============================================================================
+# CELL 10: Run Full Pipeline with Limited Videos (Backup Option)
+# ============================================================================
+
+print("\n" + "="*60)
+print("🚀 Running Full Pipeline with 20 Videos (Backup if CELL 8/9 crashes)")
+print("="*60 + "\n")
+
+# Add to path
+sys.path.insert(0, "/kaggle/working")
+
+# Force CPU mode + limited videos for stability
+os.environ["LE2I_DEVICE"] = "cpu"
+os.environ["LE2I_MAX_VIDEOS"] = "20"  # Limited to 20 videos
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+
+try:
+    # Import pipeline
+    from src.kaggle_pipeline import main
+
+    sys.argv = ["kaggle", "--skip-sanity"]
+
+    # Run
+    main()
+
+    print("\n" + "="*60)
+    print("✅ LIMITED FULL PIPELINE COMPLETED SUCCESSFULLY!")
+    print("="*60)
+
+    # Show output location
+    print(f"\n📊 Results saved to {OUTPUT_ROOT}:")
+    print(f"  - Models: {OUTPUT_ROOT / 'models'}")
+    print(f"  - Features: {OUTPUT_ROOT / 'data' / 'features'}")
+    print(f"  - Reports: {OUTPUT_ROOT / 'reports'}")
+
+except Exception as e:
+    print(f"\n❌ ERROR: {e}")
+    import traceback
+    traceback.print_exc()
