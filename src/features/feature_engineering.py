@@ -200,28 +200,28 @@ def compute_advanced_features(x_data: np.ndarray) -> np.ndarray:
 
     # ---- 5. Statistical (sample-level, tiled to 75) ----
     y_hips = p_hips_y
-    mu_y = y_hips.mean(axis=1, keepdims=True)
-    sigma_y = y_hips.std(axis=1, keepdims=True) + EPS
+    mu_y = y_hips.mean(axis=1).reshape(-1, 1)
+    sigma_y = y_hips.std(axis=1).reshape(-1, 1) + EPS
     c_y = y_hips - mu_y
-    skew_y = (c_y**3).mean(axis=1, keepdims=True) / (sigma_y**3)
-    kurt_y = (c_y**4).mean(axis=1, keepdims=True) / (sigma_y**4)
+    skew_y = (c_y**3).mean(axis=1).reshape(-1, 1) / (sigma_y**3)
+    kurt_y = (c_y**4).mean(axis=1).reshape(-1, 1) / (sigma_y**4)
 
-    mu_a = body_angle.mean(axis=1, keepdims=True)
-    sigma_a = body_angle.std(axis=1, keepdims=True) + EPS
+    mu_a = body_angle.mean(axis=1).reshape(-1, 1)
+    sigma_a = body_angle.std(axis=1).reshape(-1, 1) + EPS
     c_a = body_angle - mu_a
-    skew_a = (c_a**3).mean(axis=1, keepdims=True) / (sigma_a**3)
-    kurt_a = (c_a**4).mean(axis=1, keepdims=True) / (sigma_a**4)
+    skew_a = (c_a**3).mean(axis=1).reshape(-1, 1) / (sigma_a**3)
+    kurt_a = (c_a**4).mean(axis=1).reshape(-1, 1) / (sigma_a**4)
 
     stats = np.concatenate(
         [
-            np.tile(mu_y, (1, T, 1)),
-            np.tile(sigma_y, (1, T, 1)),
-            np.tile(skew_y, (1, T, 1)),
-            np.tile(kurt_y, (1, T, 1)),
-            np.tile(mu_a, (1, T, 1)),
-            np.tile(sigma_a, (1, T, 1)),
-            np.tile(skew_a, (1, T, 1)),
-            np.tile(kurt_a, (1, T, 1)),
+            np.repeat(mu_y, T, axis=1)[:, :, np.newaxis],
+            np.repeat(sigma_y, T, axis=1)[:, :, np.newaxis],
+            np.repeat(skew_y, T, axis=1)[:, :, np.newaxis],
+            np.repeat(kurt_y, T, axis=1)[:, :, np.newaxis],
+            np.repeat(mu_a, T, axis=1)[:, :, np.newaxis],
+            np.repeat(sigma_a, T, axis=1)[:, :, np.newaxis],
+            np.repeat(skew_a, T, axis=1)[:, :, np.newaxis],
+            np.repeat(kurt_a, T, axis=1)[:, :, np.newaxis],
         ],
         axis=2,
     )
