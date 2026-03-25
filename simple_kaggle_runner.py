@@ -35,6 +35,7 @@ subprocess.run([sys.executable, "-m", "pip", "install", "-q", "--upgrade", "pip"
 
 # Install core dependencies
 packages = [
+    "ultralytics",
     "opencv-python-headless",
     "numpy",
     "pandas",

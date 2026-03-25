@@ -27,7 +27,14 @@ import plotly.graph_objects as go
 import streamlit as st
 import tensorflow as tf
 import torch
-from ultralytics import YOLO
+
+try:
+    from ultralytics import YOLO
+except ModuleNotFoundError as e:
+    raise ModuleNotFoundError(
+        "Missing dependency 'ultralytics'. Install with `pip install ultralytics` "
+        "or add it to your environment requirements."
+    ) from e
 
 from src.features.feature_engineering import compute_advanced_features, minmax_scale
 from src.inference.alert_system import (SKELETON_EDGES, TelegramAlertClient,

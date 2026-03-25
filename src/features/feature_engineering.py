@@ -13,7 +13,14 @@ from typing import Dict, List, Optional
 import numpy as np
 import torch
 from tqdm import tqdm
-from ultralytics import YOLO
+
+try:
+    from ultralytics import YOLO
+except ModuleNotFoundError as e:
+    raise ModuleNotFoundError(
+        "Missing dependency 'ultralytics'. Install with `pip install ultralytics` "
+        "or add it to your environment requirements."
+    ) from e
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
