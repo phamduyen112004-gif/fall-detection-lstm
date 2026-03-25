@@ -109,6 +109,11 @@ print("="*60 + "\n")
 # Add to path
 sys.path.insert(0, "/kaggle/working")
 
+# Force CPU mode + small sample for stability on Kaggle GPU/driver issues
+os.environ["LE2I_DEVICE"] = "cpu"
+os.environ["LE2I_MAX_VIDEOS"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+
 try:
     # Import pipeline
     from src.kaggle_pipeline import main
@@ -121,7 +126,7 @@ try:
     # - "--train-only": Chỉ huấn luyện
     # - "--extract-only": Chỉ trích xuất
     
-    sys.argv = ["kaggle", "--skip-sanity"]
+    sys.argv = ["kaggle", "--extract-only", "--skip-sanity"]
     
     # Run
     main()

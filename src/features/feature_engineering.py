@@ -243,14 +243,34 @@ def minmax_scale(X: np.ndarray, axis: tuple = (0, 1)) -> np.ndarray:
 
 
 def main():
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"Using device: {device}")
+    preferred_device = os.getenv("LE2I_DEVICE", "auto").lower()
+    if preferred_device == "cpu":
+        device = "cpu"
+    elif preferred_device == "cuda":
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+    else:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    print(f"Using device: {device} (LE2I_DEVICE={preferred_device})")
     print("Loading YOLO pose model...")
-    model = YOLO("yolo11n-pose.pt")
+    try:
+        model = YOLO("yolo11n-pose.pt")
+    except Exception as e:
+        raise RuntimeError(
+            "Failed to load YOLO model. Ensure yolo11n-pose.pt is available "
+            "and ultralytics package is installed."
+        ) from e
+
+    # Optional limit for Kaggle low-memory runs: set env LE2I_MAX_VIDEOS=10
+    max_videos = int(os.getenv("LE2I_MAX_VIDEOS", "10"))
 
     items = collect_video_items(INPUT_ROOT)
     if not items:
         raise RuntimeError(f"No target videos found under {INPUT_ROOT}")
+
+    if max_videos > 0 and len(items) > max_videos:
+        print(f"[WARN] Limiting to {max_videos} videos (of {len(items)}) for low-memory run")
+        items = items[:max_videos]
 
     x_samples: List[np.ndarray] = []
     y_samples: List[np.ndarray] = []
