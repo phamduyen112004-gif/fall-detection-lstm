@@ -43,25 +43,7 @@ _env_input_root = os.getenv("LE2I_INPUT_ROOT", "").strip()
 if _env_input_root:
     INPUT_ROOT = Path(_env_input_root)
 else:
-    candidates = [
-        Path("/kaggle/input/datasets/tuyenldvn/falldataset-imvia"),
-        Path("/kaggle/input/le2i-fall-dataset"),
-        Path("/kaggle/input/falldataset-imvia"),
-    ]
-    existing = [p for p in candidates if p.exists()]
-    if existing:
-        INPUT_ROOT = existing[0]
-    else:
-        # scanning fallback for any subfolder containing key name
-        parent = Path("/kaggle/input")
-        INPUT_ROOT = None
-        if parent.exists():
-            for candidate in parent.rglob("*falldataset*imvia*"):
-                if candidate.is_dir():
-                    INPUT_ROOT = candidate
-                    break
-        if INPUT_ROOT is None:
-            INPUT_ROOT = candidates[0]
+    INPUT_ROOT = Path("/kaggle/input/datasets/tuyenldvn/falldataset-imvia")
 
 OUTPUT_ROOT = Path(os.getenv("LE2I_OUTPUT_ROOT", "/kaggle/working"))
 
