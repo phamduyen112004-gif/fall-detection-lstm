@@ -214,14 +214,14 @@ def compute_advanced_features(x_data: np.ndarray) -> np.ndarray:
 
     stats = np.concatenate(
         [
-            np.broadcast_to(mu_y, (N, T, 1)),
-            np.broadcast_to(sigma_y, (N, T, 1)),
-            np.broadcast_to(skew_y, (N, T, 1)),
-            np.broadcast_to(kurt_y, (N, T, 1)),
-            np.broadcast_to(mu_a, (N, T, 1)),
-            np.broadcast_to(sigma_a, (N, T, 1)),
-            np.broadcast_to(skew_a, (N, T, 1)),
-            np.broadcast_to(kurt_a, (N, T, 1)),
+            np.tile(mu_y, (1, T, 1)),
+            np.tile(sigma_y, (1, T, 1)),
+            np.tile(skew_y, (1, T, 1)),
+            np.tile(kurt_y, (1, T, 1)),
+            np.tile(mu_a, (1, T, 1)),
+            np.tile(sigma_a, (1, T, 1)),
+            np.tile(skew_a, (1, T, 1)),
+            np.tile(kurt_a, (1, T, 1)),
         ],
         axis=2,
     )
