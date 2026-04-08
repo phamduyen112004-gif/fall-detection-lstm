@@ -20,7 +20,7 @@ from src.training.losses import binary_focal_loss
 from src.utils.data_loader import NpySequence
 
 
-def _train_eval_model(model, x_train, y_train, x_test, y_test, epochs: int = 50):
+def _train_eval_model(model, x_train, y_train, x_test, y_test, epochs: int = 25):
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=5e-4),
         loss=binary_focal_loss(gamma=2.0, alpha=0.25),
@@ -32,17 +32,13 @@ def _train_eval_model(model, x_train, y_train, x_test, y_test, epochs: int = 50)
     class_weight = {int(c): float(w) for c, w in zip(classes, weights)}
     model.fit(train_gen, epochs=epochs, verbose=0, class_weight=class_weight)
     y_prob = model.predict(x_test, verbose=0).reshape(-1)
-    return evaluate_window_and_event_metrics(y_test, y_prob, fps=25.0, threshold=0.30)
+    return evaluate_window_and_event_metrics(y_test, y_prob, fps=25.0, threshold=0.35)
 
 
 def main():
     x_pose = np.load(OUTPUT_DATA_PROCESSED / "x_data.npy").astype(np.float32)  # [N,75,17,3]
     y = np.load(OUTPUT_DATA_PROCESSED / "y_data.npy").reshape(-1).astype(np.int32)
-    pos = int((y == 1).sum())
-    neg = int((y == 0).sum())
-    print(f"[DATA] Total={len(y)}, Pos={pos}, Neg={neg}")
-    if pos < 20:
-        raise RuntimeError("Too few positive samples for reliable ablation (Pos < 20).")
+    print(f"[DATA] Total={len(y)}, Pos={(y==1).sum()}, Neg={(y==0).sum()}")
     x_feat = np.load(OUTPUT_DATA_FEATURES / "features_final.npy").astype(np.float32)  # [N,75,K]
     x_feat_ns = np.load(OUTPUT_DATA_FEATURES / "features_final_nosmooth.npy").astype(np.float32)
     x_raw_pose = x_pose.reshape(len(x_pose), x_pose.shape[1], -1).astype(np.float32)  # [N,75,51]

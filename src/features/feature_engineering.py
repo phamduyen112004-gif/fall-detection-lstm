@@ -106,6 +106,23 @@ def extract_fall_sample(pose_seq: np.ndarray, impact_frame: int) -> Optional[np.
     return pose_seq[start:end]
 
 
+def extract_fall_samples_around_impact(
+    pose_seq: np.ndarray,
+    impact_frame: int,
+    offsets: List[int],
+) -> List[np.ndarray]:
+    """
+    Create multiple fall windows around impact to increase positive samples.
+    Each offset shifts the impact anchor while keeping fixed window length.
+    """
+    samples: List[np.ndarray] = []
+    for off in offsets:
+        w = extract_fall_sample(pose_seq, impact_frame + off)
+        if w is not None:
+            samples.append(w)
+    return samples
+
+
 def collect_adl_windows_from_labels(
     pose_seq: np.ndarray,
     status_labels: Optional[np.ndarray],
@@ -264,6 +281,9 @@ def main():
     # Optional limit for Kaggle low-memory runs: set env LE2I_MAX_VIDEOS=10
     # Default 0 means process all videos.
     max_videos = int(os.getenv("LE2I_MAX_VIDEOS", "0"))
+    # Positive augmentation by taking multiple windows around impact.
+    # Default offsets: -8, -4, 0, +4, +8 frames.
+    fall_offsets = [int(x) for x in os.getenv("LE2I_FALL_OFFSETS", "-8,-4,0,4,8").split(",") if x.strip()]
 
     items = collect_video_items(INPUT_ROOT)
     if not items:
@@ -291,8 +311,7 @@ def main():
 
         impact = find_impact_frame(status_labels)
         if impact is not None:
-            fall_window = extract_fall_sample(pose_seq, impact)
-            if fall_window is not None:
+            for fall_window in extract_fall_samples_around_impact(pose_seq, impact, fall_offsets):
                 processed = fill_and_smooth_window(fall_window)
                 processed_nosmooth = fill_without_smoothing(fall_window)
                 if processed is not None and processed_nosmooth is not None:
@@ -320,6 +339,9 @@ def main():
     x_data = np.stack(x_samples, axis=0).astype(np.float32)
     x_data_nosmooth = np.stack(x_samples_nosmooth, axis=0).astype(np.float32)
     y_data = np.stack(y_samples, axis=0).astype(np.int32)
+    pos = int((y_data == 1).sum())
+    neg = int((y_data == 0).sum())
+    print(f"[DATA] Total={len(y_data)}, Pos={pos}, Neg={neg}, PosRatio={pos / max(1, len(y_data)):.3f}")
 
     np.save(OUTPUT_DATA_PROCESSED / "x_data.npy", x_data)
     np.save(OUTPUT_DATA_PROCESSED / "x_data_nosmooth.npy", x_data_nosmooth)
