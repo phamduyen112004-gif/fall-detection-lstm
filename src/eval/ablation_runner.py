@@ -20,6 +20,39 @@ from src.training.losses import binary_focal_loss
 from src.utils.data_loader import NpySequence
 
 
+def _compute_cls_metrics(y_true: np.ndarray, y_prob: np.ndarray, threshold: float) -> dict:
+    y_true_i = y_true.reshape(-1).astype(np.int32)
+    y_pred_i = (y_prob.reshape(-1) >= threshold).astype(np.int32)
+    tp = int(((y_true_i == 1) & (y_pred_i == 1)).sum())
+    fp = int(((y_true_i == 0) & (y_pred_i == 1)).sum())
+    fn = int(((y_true_i == 1) & (y_pred_i == 0)).sum())
+    precision = tp / max(tp + fp, 1)
+    recall = tp / max(tp + fn, 1)
+    f1 = (2 * precision * recall) / max(precision + recall, 1e-9)
+    return {"precision": float(precision), "recall": float(recall), "f1": float(f1)}
+
+
+def _find_best_threshold(y_true: np.ndarray, y_prob: np.ndarray) -> float:
+    best_t = 0.5
+    best_f1 = -1.0
+    best_precision = -1.0
+    for t in np.arange(0.10, 0.91, 0.01):
+        m = _compute_cls_metrics(y_true, y_prob, float(t))
+        if (
+            m["f1"] > best_f1
+            or (np.isclose(m["f1"], best_f1) and m["precision"] > best_precision)
+            or (
+                np.isclose(m["f1"], best_f1)
+                and np.isclose(m["precision"], best_precision)
+                and abs(t - 0.5) < abs(best_t - 0.5)
+            )
+        ):
+            best_f1 = m["f1"]
+            best_precision = m["precision"]
+            best_t = float(t)
+    return best_t
+
+
 def _train_eval_model(model, x_train, y_train, x_test, y_test, epochs: int = 25):
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=5e-4),
@@ -30,9 +63,17 @@ def _train_eval_model(model, x_train, y_train, x_test, y_test, epochs: int = 25)
     classes = np.unique(y_train.astype(np.int32))
     weights = compute_class_weight(class_weight="balanced", classes=classes, y=y_train.astype(np.int32))
     class_weight = {int(c): float(w) for c, w in zip(classes, weights)}
-    model.fit(train_gen, epochs=epochs, verbose=0, class_weight=class_weight)
+    x_tr, x_val, y_tr, y_val = train_test_split(
+        x_train, y_train, test_size=0.2, random_state=42, stratify=y_train.astype(np.int32)
+    )
+    tr_gen = NpySequence(x_tr, y_tr, batch_size=32, shuffle=True, augment=True)
+    model.fit(tr_gen, epochs=epochs, verbose=0, class_weight=class_weight)
+    y_val_prob = model.predict(x_val, verbose=0).reshape(-1)
+    best_threshold = _find_best_threshold(y_val, y_val_prob)
     y_prob = model.predict(x_test, verbose=0).reshape(-1)
-    return evaluate_window_and_event_metrics(y_test, y_prob, fps=25.0, threshold=0.35)
+    metrics = evaluate_window_and_event_metrics(y_test, y_prob, fps=25.0, threshold=best_threshold)
+    metrics["threshold"] = float(best_threshold)
+    return metrics
 
 
 def main():

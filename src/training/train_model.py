@@ -73,21 +73,21 @@ def plot_training_curves(history, output_dir: Path):
     plt.close(fig)
 
 
-def plot_confusion_matrix(y_true: np.ndarray, y_prob: np.ndarray, output_dir: Path):
-    y_pred = (y_prob >= 0.5).astype(np.int32)
+def plot_confusion_matrix(y_true: np.ndarray, y_prob: np.ndarray, output_dir: Path, threshold: float = 0.5):
+    y_pred = (y_prob >= threshold).astype(np.int32)
     cm = confusion_matrix(y_true.astype(np.int32), y_pred)
     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=["ADL", "Nga"])
     fig, ax = plt.subplots(figsize=(5, 5))
     disp.plot(ax=ax, cmap="Blues", colorbar=False)
-    ax.set_title("Confusion Matrix tren tap test")
+    ax.set_title(f"Confusion Matrix tren tap test (threshold={threshold:.2f})")
     fig.tight_layout()
     fig.savefig(output_dir / "confusion_matrix.png", dpi=200)
     plt.close(fig)
 
 
-def compute_classification_metrics(y_true: np.ndarray, y_prob: np.ndarray):
+def compute_classification_metrics(y_true: np.ndarray, y_prob: np.ndarray, threshold: float = 0.5):
     y_true_i = y_true.astype(np.int32).reshape(-1)
-    y_pred_i = (y_prob.reshape(-1) >= 0.5).astype(np.int32)
+    y_pred_i = (y_prob.reshape(-1) >= threshold).astype(np.int32)
     tp = int(((y_true_i == 1) & (y_pred_i == 1)).sum())
     tn = int(((y_true_i == 0) & (y_pred_i == 0)).sum())
     fp = int(((y_true_i == 0) & (y_pred_i == 1)).sum())
@@ -102,6 +102,31 @@ def compute_classification_metrics(y_true: np.ndarray, y_prob: np.ndarray):
         "f1": float(f1),
         "specificity": float(specificity),
     }
+
+
+def find_best_threshold(y_true: np.ndarray, y_prob: np.ndarray) -> float:
+    """
+    Pick threshold on validation set by max F1.
+    Tie-breaker: higher precision, then threshold closer to 0.5.
+    """
+    y_true_i = y_true.astype(np.int32).reshape(-1)
+    y_prob_i = y_prob.astype(np.float32).reshape(-1)
+    best_t = 0.5
+    best_f1 = -1.0
+    best_precision = -1.0
+    for t in np.arange(0.10, 0.91, 0.01):
+        m = compute_classification_metrics(y_true_i, y_prob_i, threshold=float(t))
+        f1 = m["f1"]
+        precision = m["precision"]
+        if (
+            f1 > best_f1
+            or (np.isclose(f1, best_f1) and precision > best_precision)
+            or (np.isclose(f1, best_f1) and np.isclose(precision, best_precision) and abs(t - 0.5) < abs(best_t - 0.5))
+        ):
+            best_f1 = f1
+            best_precision = precision
+            best_t = float(t)
+    return best_t
 
 
 def run_scene_split_cv(x_data: np.ndarray, y_data: np.ndarray, groups: np.ndarray, output_dir: Path):
@@ -208,14 +233,20 @@ def main():
     print(f"Test Loss: {test_loss:.4f}")
     print(f"Test Accuracy: {test_acc:.4f}")
 
+    y_val_prob = model.predict(x_val, verbose=0).reshape(-1)
+    best_threshold = find_best_threshold(y_val, y_val_prob)
+    print(f"Best threshold selected on validation set: {best_threshold:.2f}")
+
     y_prob = model.predict(x_test, verbose=0).reshape(-1)
-    cls_metrics = compute_classification_metrics(y_test, y_prob)
+    cls_metrics = compute_classification_metrics(y_test, y_prob, threshold=best_threshold)
+    cls_metrics["threshold"] = float(best_threshold)
     print(
         f"Precision={cls_metrics['precision']:.4f}, Recall={cls_metrics['recall']:.4f}, "
-        f"F1={cls_metrics['f1']:.4f}, Specificity={cls_metrics['specificity']:.4f}"
+        f"F1={cls_metrics['f1']:.4f}, Specificity={cls_metrics['specificity']:.4f}, "
+        f"Threshold={cls_metrics['threshold']:.2f}"
     )
     plot_training_curves(history, report_dir)
-    plot_confusion_matrix(y_test, y_prob, report_dir)
+    plot_confusion_matrix(y_test, y_prob, report_dir, threshold=best_threshold)
     pd.DataFrame(history.history).to_csv(report_dir / "history.csv", index=False)
     pd.DataFrame([cls_metrics]).to_csv(report_dir / "metrics_summary.csv", index=False)
 
