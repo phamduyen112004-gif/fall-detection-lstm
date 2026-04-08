@@ -37,7 +37,7 @@ from src.config import (
 )
 from src.pose.pose_extraction import (collect_le2i_video_annotation_pairs,
                                       extract_pose_sequence, sync_video_and_labels)
-from src.pose.smoothing import fill_and_smooth_window
+from src.pose.smoothing import fill_and_smooth_window, fill_without_smoothing
 
 # Epsilon for numerical stability
 EPS = 1e-5
@@ -262,7 +262,8 @@ def main():
         ) from e
 
     # Optional limit for Kaggle low-memory runs: set env LE2I_MAX_VIDEOS=10
-    max_videos = int(os.getenv("LE2I_MAX_VIDEOS", "10"))
+    # Default 0 means process all videos.
+    max_videos = int(os.getenv("LE2I_MAX_VIDEOS", "0"))
 
     items = collect_video_items(INPUT_ROOT)
     if not items:
@@ -273,7 +274,9 @@ def main():
         items = items[:max_videos]
 
     x_samples: List[np.ndarray] = []
+    x_samples_nosmooth: List[np.ndarray] = []
     y_samples: List[np.ndarray] = []
+    scene_ids: List[str] = []
 
     print(f"Found {len(items)} videos to process.")
     for item in tqdm(items, desc="Videos"):
@@ -291,16 +294,22 @@ def main():
             fall_window = extract_fall_sample(pose_seq, impact)
             if fall_window is not None:
                 processed = fill_and_smooth_window(fall_window)
-                if processed is not None:
+                processed_nosmooth = fill_without_smoothing(fall_window)
+                if processed is not None and processed_nosmooth is not None:
                     x_samples.append(processed)
+                    x_samples_nosmooth.append(processed_nosmooth)
                     y_samples.append(np.array([1], dtype=np.int32))
+                    scene_ids.append(item.scene_name)
 
         adl_windows = collect_adl_windows_from_labels(pose_seq, status_labels)
         for w in adl_windows:
             processed = fill_and_smooth_window(w)
-            if processed is not None:
+            processed_nosmooth = fill_without_smoothing(w)
+            if processed is not None and processed_nosmooth is not None:
                 x_samples.append(processed)
+                x_samples_nosmooth.append(processed_nosmooth)
                 y_samples.append(np.array([0], dtype=np.int32))
+                scene_ids.append(item.scene_name)
 
         del pose_seq
         gc.collect()
@@ -309,19 +318,26 @@ def main():
         raise RuntimeError("No valid samples created.")
 
     x_data = np.stack(x_samples, axis=0).astype(np.float32)
+    x_data_nosmooth = np.stack(x_samples_nosmooth, axis=0).astype(np.float32)
     y_data = np.stack(y_samples, axis=0).astype(np.int32)
 
     np.save(OUTPUT_DATA_PROCESSED / "x_data.npy", x_data)
+    np.save(OUTPUT_DATA_PROCESSED / "x_data_nosmooth.npy", x_data_nosmooth)
     np.save(OUTPUT_DATA_PROCESSED / "y_data.npy", y_data)
+    np.save(OUTPUT_DATA_PROCESSED / "scene_ids.npy", np.asarray(scene_ids, dtype=object))
     print(f"Saved x_data.npy shape={x_data.shape}, y_data.npy shape={y_data.shape}")
 
     # Advanced features
     features = compute_advanced_features(x_data)
     features_norm = minmax_scale(features)
+    features_ns = compute_advanced_features(x_data_nosmooth)
+    features_ns_norm = minmax_scale(features_ns)
     np.save(OUTPUT_DATA_FEATURES / "features_final.npy", features_norm)
+    np.save(OUTPUT_DATA_FEATURES / "features_final_nosmooth.npy", features_ns_norm)
     print(f"Saved features_final.npy shape={features_norm.shape}")
+    print(f"Saved features_final_nosmooth.npy shape={features_ns_norm.shape}")
 
-    del x_data, y_data, x_samples, y_samples, features, features_norm
+    del x_data, x_data_nosmooth, y_data, x_samples, x_samples_nosmooth, y_samples, features, features_norm, features_ns, features_ns_norm
     gc.collect()
 
 

@@ -43,7 +43,13 @@ _env_input_root = os.getenv("LE2I_INPUT_ROOT", "").strip()
 if _env_input_root:
     INPUT_ROOT = Path(_env_input_root)
 else:
-    INPUT_ROOT = Path("/kaggle/input/datasets/tuyenldvn/falldataset-imvia")
+    INPUT_ROOT = _first_existing_path(
+        [
+            Path("/kaggle/input/datasets/tuyenldvn/falldataset-imvia"),
+            Path("/kaggle/input/le2i-fall-dataset"),
+            Path("/kaggle/input/falldataset-imvia"),
+        ]
+    )
 
 OUTPUT_ROOT = Path(os.getenv("LE2I_OUTPUT_ROOT", "/kaggle/working"))
 

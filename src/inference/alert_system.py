@@ -9,7 +9,7 @@ import sys
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Deque, Dict, Optional, Tuple
+from typing import Deque, Dict, List, Optional, Tuple
 
 os.environ['QT_QPA_PLATFORM'] = 'offscreen'
 
@@ -130,6 +130,7 @@ class FallDecisionState:
     impact_prob: float = 0.0
     impact_pose: Optional[np.ndarray] = None
     peak_acc: float = 0.0
+    start_timestamp: str = ""
 
 
 class TelegramAlertClient:
@@ -214,6 +215,9 @@ class AdvancedAlertSystem:
         stationary_frames: int = 50,
         stationary_var_threshold: float = 2e-4,
         hip_rise_cancel_threshold: float = 0.06,
+        cooldown_sec: int = 45,
+        post_fall_inactivity_sec: int = 8,
+        warning_threshold: float = 0.6,
         telegram_bot_token: Optional[str] = None,
         telegram_chat_id: Optional[str] = None,
     ):
@@ -222,6 +226,11 @@ class AdvancedAlertSystem:
         self.stationary_frames = stationary_frames
         self.stationary_var_threshold = stationary_var_threshold
         self.hip_rise_cancel_threshold = hip_rise_cancel_threshold
+        self.cooldown_sec = cooldown_sec
+        self.post_fall_inactivity_sec = post_fall_inactivity_sec
+        self.warning_threshold = warning_threshold
+        self.last_alert_unix = 0.0
+        self.event_packages: List[Dict] = []
 
         loaded_bot_token, loaded_chat_id = _load_telegram_credentials()
         self.telegram_bot_token = (telegram_bot_token or loaded_bot_token).strip()
@@ -306,13 +315,17 @@ class AdvancedAlertSystem:
         st = self.state
         if not st.waiting_confirmation:
             if prob > self.upper_threshold:
+                now_unix = datetime.now().timestamp()
+                if (now_unix - self.last_alert_unix) < self.cooldown_sec:
+                    return
                 st.waiting_confirmation = True
-                st.remaining_frames = self.stationary_frames
+                st.remaining_frames = max(self.stationary_frames, int(self.post_fall_inactivity_sec * 25))
                 st.hips_y_history = [hips_y]
                 st.feet_y_history = [feet_y]
                 st.impact_prob = prob
                 st.impact_pose = latest_pose.copy()
                 st.peak_acc = peak_acc
+                st.start_timestamp = timestamp
             return
 
         # waiting for stationary confirmation
@@ -339,16 +352,31 @@ class AdvancedAlertSystem:
         is_stationary = hips_var <= self.stationary_var_threshold
         lying_condition = hips_mean > feet_mean
         if is_stationary and lying_condition:
-            self._trigger_alert(timestamp=timestamp)
+            self._trigger_alert(timestamp=timestamp, alert_level="emergency")
+        elif prob > self.warning_threshold:
+            self._trigger_alert(timestamp=timestamp, alert_level="warning")
         self._reset_state()
 
-    def _trigger_alert(self, timestamp: str) -> None:
+    def _trigger_alert(self, timestamp: str, alert_level: str = "emergency") -> None:
         st = self.state
         impact_pose = st.impact_pose if st.impact_pose is not None else np.zeros((N_KEYPOINTS, N_CHANNELS), dtype=np.float32)
         privacy_img = render_skeleton_privacy_frame(impact_pose)
+        self.last_alert_unix = datetime.now().timestamp()
+        event_pkg = {
+            "timestamp": timestamp,
+            "start_timestamp": st.start_timestamp,
+            "location": self.location,
+            "alert_level": alert_level,
+            "probability": float(st.impact_prob),
+            "peak_acc": float(st.peak_acc),
+            "skeleton_image": privacy_img,
+        }
+        self.event_packages.append(event_pkg)
+
         text = (
-            f"🚨 CANH BAO NGUY HIEM: Phat hien nguoi nga tai [{self.location}] vao luc [{timestamp}]. "
-            f"Muc do va cham (gia toc cao nhat): [{st.peak_acc:.4f}]."
+            f"{'🚨 CANH BAO KHAN' if alert_level == 'emergency' else '⚠️ CANH BAO NGHI NGO'}: "
+            f"Phat hien su kien tai [{self.location}] luc [{timestamp}]. "
+            f"Xac suat: [{st.impact_prob:.3f}], Gia toc cuc dai: [{st.peak_acc:.4f}]."
         )
         if self.telegram_client is not None:
             try:
@@ -365,6 +393,12 @@ class AdvancedAlertSystem:
         self.state.impact_prob = 0.0
         self.state.impact_pose = None
         self.state.peak_acc = 0.0
+        self.state.start_timestamp = ""
+
+    def pop_event_packages(self) -> List[Dict]:
+        pkgs = list(self.event_packages)
+        self.event_packages.clear()
+        return pkgs
 
 
 def example_usage():

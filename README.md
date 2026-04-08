@@ -32,9 +32,30 @@ Artifacts are saved to:
 - `/kaggle/working/models`
 - `/kaggle/working/reports`
 
-Sanity check after pipeline run:
+## Analysis and Inference
+
+After training the model, run detailed analysis:
 
 ```bash
-python -m src.kaggle_sanity
-python -m src.kaggle_sanity --strict
+python analysis_and_inference.py --analyze
 ```
+
+This will:
+- Load test data and model
+- Compute precision, recall, F1-score per class
+- Analyze errors (false positives/negatives)
+- Compare with baseline (Logistic Regression on mean features)
+- Analyze training history and create detailed plots
+
+For inference on new videos:
+
+```bash
+python analysis_and_inference.py --inference --video_path /path/to/video.mp4
+```
+
+This will:
+- Extract pose keypoints from video
+- Compute features using sliding windows
+- Run real-time inference with post-processing
+- Measure performance (speed, accuracy)
+- Save results to CSV

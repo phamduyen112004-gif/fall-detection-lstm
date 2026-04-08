@@ -73,3 +73,39 @@ def fill_and_smooth_window(window_pose: np.ndarray) -> Optional[np.ndarray]:
     w[:, :, 1] = np.clip(w[:, :, 1], 0.0, 1.0)
     w[:, :, 2] = np.clip(w[:, :, 2], 0.0, 1.0)
     return w
+
+
+def fill_without_smoothing(window_pose: np.ndarray) -> Optional[np.ndarray]:
+    """
+    Handle missing data without Savitzky-Golay smoothing (ablation baseline).
+    - If max consecutive missing > 10: drop sample.
+    - Else interpolate x,y,conf via np.interp.
+    - Clamp to [0,1].
+    """
+    w = window_pose.copy().astype(np.float32)
+    T = w.shape[0]
+
+    frame_missing = (
+        np.isnan(w[:, :, 0]).all(axis=1)
+        | (np.nan_to_num(w[:, :, 2], nan=0.0) <= 0).all(axis=1)
+    )
+    if max_consecutive_missing(frame_missing) > MAX_CONSECUTIVE_MISSING:
+        return None
+
+    t_idx = np.arange(T, dtype=np.float32)
+    for j in range(N_KEYPOINTS):
+        for c in range(N_CHANNELS):
+            series = w[:, j, c].copy()
+            valid = ~np.isnan(series)
+            if valid.sum() == 0:
+                return None
+            if valid.sum() == 1:
+                series = np.full_like(series, series[valid][0])
+            else:
+                series = np.interp(t_idx, t_idx[valid], series[valid]).astype(np.float32)
+            w[:, j, c] = series
+
+    w[:, :, 0] = np.clip(w[:, :, 0], 0.0, 1.0)
+    w[:, :, 1] = np.clip(w[:, :, 1], 0.0, 1.0)
+    w[:, :, 2] = np.clip(w[:, :, 2], 0.0, 1.0)
+    return w

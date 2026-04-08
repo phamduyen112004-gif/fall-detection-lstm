@@ -4,7 +4,7 @@ import math
 import os
 import sys
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Tuple
 
 import numpy as np
 import tensorflow as tf
@@ -24,11 +24,19 @@ class NpySequence(tf.keras.utils.Sequence):
         y: np.ndarray,
         batch_size: int = 32,
         shuffle: bool = True,
+        augment: bool = False,
+        jitter_std: float = 0.005,
+        noise_std: float = 0.003,
+        time_warp_prob: float = 0.2,
     ):
         self.x = x
         self.y = y
         self.batch_size = batch_size
         self.shuffle = shuffle
+        self.augment = augment
+        self.jitter_std = jitter_std
+        self.noise_std = noise_std
+        self.time_warp_prob = time_warp_prob
         self.indices = np.arange(len(self.x))
         self.on_epoch_end()
 
@@ -38,7 +46,20 @@ class NpySequence(tf.keras.utils.Sequence):
     def __getitem__(self, idx: int) -> Tuple[np.ndarray, np.ndarray]:
         sl = slice(idx * self.batch_size, (idx + 1) * self.batch_size)
         batch_idx = self.indices[sl]
-        return self.x[batch_idx], self.y[batch_idx]
+        x_batch = self.x[batch_idx].copy()
+        y_batch = self.y[batch_idx]
+        if self.augment:
+            x_batch = self._augment_batch(x_batch)
+        return x_batch, y_batch
+
+    def _augment_batch(self, x_batch: np.ndarray) -> np.ndarray:
+        x_aug = x_batch.copy()
+        x_aug += np.random.normal(0, self.jitter_std, size=x_aug.shape).astype(np.float32)
+        x_aug += np.random.normal(0, self.noise_std, size=x_aug.shape).astype(np.float32)
+        if np.random.rand() < self.time_warp_prob:
+            shift = np.random.randint(-2, 3)
+            x_aug = np.roll(x_aug, shift=shift, axis=1)
+        return np.clip(x_aug, 0.0, 1.0).astype(np.float32)
 
     def on_epoch_end(self):
         if self.shuffle:

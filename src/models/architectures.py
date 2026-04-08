@@ -65,3 +65,23 @@ def build_bilstm_attention_model(
         metrics=["accuracy"],
     )
     return model
+
+
+def build_bilstm_no_attention_model(
+    n_features: int,
+    learning_rate: float = 5e-4,
+) -> Model:
+    """Ablation model without attention layer."""
+    inp = Input(shape=(SEQ_LEN, n_features), name="feature_sequence")
+    x = Bidirectional(LSTM(64, return_sequences=True), name="bilstm_64")(inp)
+    x = Bidirectional(LSTM(32, return_sequences=True), name="bilstm_32")(x)
+    x = GlobalAveragePooling1D(name="global_avg_pool")(x)
+    x = Dropout(0.4, name="dropout_04")(x)
+    out = Dense(1, activation="sigmoid", name="fall_prob")(x)
+    model = Model(inputs=inp, outputs=out, name="stacked_bilstm_no_attention")
+    model.compile(
+        optimizer=Adam(learning_rate=learning_rate),
+        loss="binary_crossentropy",
+        metrics=["accuracy"],
+    )
+    return model

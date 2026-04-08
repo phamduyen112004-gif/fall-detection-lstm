@@ -40,6 +40,7 @@ from src.features.feature_engineering import compute_advanced_features, minmax_s
 from src.inference.alert_system import (SKELETON_EDGES, TelegramAlertClient,
                                         interpolate_short_missing_runs,
                                         render_skeleton_privacy_frame)
+from src.inference.profiling import RuntimeProfiler
 from src.models.architectures import TemporalAttention
 from src.pose.smoothing import fill_and_smooth_window
 
@@ -129,6 +130,7 @@ class InferenceWorker(threading.Thread):
         self.location = location
         self.telegram_client = TelegramAlertClient(bot_token, chat_id) if (send_telegram and bot_token and chat_id) else None
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.profiler = RuntimeProfiler()
 
         # Confirmation state
         self.wait_confirm = False
@@ -195,6 +197,8 @@ class InferenceWorker(threading.Thread):
             event = self._check_confirmation(prob, seq_smoothed[-1], peak_acc, ts)
 
         frame_overlay = _draw_overlay(frame, pose, bbox, prob)
+        self.profiler.update()
+        perf = self.profiler.summary()
         out = {
             "timestamp": ts,
             "frame_overlay": frame_overlay,
@@ -205,6 +209,9 @@ class InferenceWorker(threading.Thread):
             "peak_acc": peak_acc,
             "event": event,
             "feature_seq": feature_seq,
+            "fps_avg": perf["fps_avg"],
+            "ram_mb_avg": perf["ram_mb_avg"],
+            "gpu_util_avg": perf["gpu_util_avg"],
         }
         try:
             self.out_q.put_nowait(out)
@@ -449,6 +456,8 @@ def main():
         fp_btn = st.button("Xac nhan bao dong gia (False Positive)")
     with right_col:
         fps_metric = st.empty()
+        ram_metric = st.empty()
+        gpu_metric = st.empty()
         conf_metric = st.empty()
         vy_metric = st.empty()
         angle_metric = st.empty()
@@ -517,7 +526,11 @@ def main():
     conf_val = out["prob"] if out is not None else 0.0
     vy_val = out["vy"] if out is not None else 0.0
     angle_val = out["body_angle"] if out is not None else 0.0
+    ram_avg = out["ram_mb_avg"] if out is not None else 0.0
+    gpu_avg = out["gpu_util_avg"] if out is not None else 0.0
     fps_metric.metric("FPS", f"{fps_val:.2f}")
+    ram_metric.metric("RAM avg (MB)", f"{ram_avg:.1f}")
+    gpu_metric.metric("GPU util avg (%)", f"{gpu_avg:.1f}")
     conf_metric.metric("Confidence Score", f"{conf_val:.3f}")
     vy_metric.metric("Vertical Velocity", f"{vy_val:.4f}")
     angle_metric.metric("Body Tilt Angle", f"{angle_val:.4f}")

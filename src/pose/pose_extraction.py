@@ -1,16 +1,9 @@
 """Extract per-frame pose from video using YOLO pose estimation."""
 
 import gc
-import json
 import os
-import subprocess
-import sys
-import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
-
-# Enforce headless mode for Qt backend so Kaggle never opens a GUI window.
-os.environ['QT_QPA_PLATFORM'] = 'offscreen'
 
 import cv2
 import numpy as np
@@ -18,61 +11,11 @@ import torch
 from tqdm import tqdm
 from ultralytics import YOLO
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
 from src.config import FRAME_HEIGHT, FRAME_WIDTH, N_CHANNELS, N_KEYPOINTS
 
 # Stabilize OpenCV/FFmpeg on Kaggle to reduce native decode crashes.
 os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "threads;1")
 cv2.setNumThreads(0)
-
-DEBUG_LOG_PATH = Path(__file__).resolve().parents[2] / "debug-b9631d.log"
-
-
-def _dbg(hypothesis_id: str, location: str, message: str, data: Optional[dict] = None, run_id: str = "pre-fix") -> None:
-    payload = {
-        "sessionId": "b9631d",
-        "runId": run_id,
-        "hypothesisId": hypothesis_id,
-        "location": location,
-        "message": message,
-        "data": data or {},
-        "timestamp": int(time.time() * 1000),
-    }
-    with DEBUG_LOG_PATH.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(payload, ensure_ascii=True) + "\n")
-
-
-def _transcode_if_needed(video_path: Path) -> Path:
-    # Avoid fragile AVI/mp3 header issues by generating a clean temporary file
-    try:
-        if not video_path.exists():
-            return video_path
-        target = Path("/kaggle/working").resolve() / "tmp_fixed_video.avi"
-        if target.exists():
-            return target
-        cmd = [
-            "ffmpeg",
-            "-y",
-            "-loglevel",
-            "error",
-            "-i",
-            str(video_path),
-            "-an",
-            "-c:v",
-            "libx264",
-            "-preset",
-            "ultrafast",
-            "-crf",
-            "24",
-            str(target),
-        ]
-        subprocess.run(cmd, check=False)
-        if target.exists() and target.stat().st_size > 0:
-            return target
-    except Exception:
-        pass
-    return video_path
 
 
 def extract_pose_sequence(
@@ -88,27 +31,13 @@ def extract_pose_sequence(
     Spatial scaling: x/320, y/240 -> [0,1].
     """
     video_path = Path(video_path)
-    # Try to restore/fix corrupt header videos before decode.
-    video_path = _transcode_if_needed(video_path)
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
-    # #region agent log
-    _dbg("H1", "pose_extraction.py:54", "extract_pose_sequence_enter", {"video_path": str(video_path), "device": device})
-    # #endregion
     cap = cv2.VideoCapture(str(video_path), cv2.CAP_FFMPEG)
-    # #region agent log
-    _dbg("H2", "pose_extraction.py:58", "cap_open_ffmpeg", {"is_opened": bool(cap.isOpened())})
-    # #endregion
     if not cap.isOpened():
         # Fallback backend if FFmpeg backend is unavailable.
         cap = cv2.VideoCapture(str(video_path), cv2.CAP_ANY)
-        # #region agent log
-        _dbg("H2", "pose_extraction.py:63", "cap_open_fallback", {"is_opened": bool(cap.isOpened())})
-        # #endregion
     if not cap.isOpened():
-        # #region agent log
-        _dbg("H2", "pose_extraction.py:67", "cap_open_failed", {"video_path": str(video_path)})
-        # #endregion
         raise RuntimeError(f"Cannot open video: {video_path}")
 
     frames_pose: list[np.ndarray] = []
@@ -120,50 +49,41 @@ def extract_pose_sequence(
         else None
     )
     bad_reads = 0
-    frame_idx = 0
     try:
         while True:
             try:
                 ret, frame = cap.read()
             except Exception as exc:
-                # Some broken AVI files can trigger decoder exceptions.
                 err_str = str(exc)
                 if "Header missing" in err_str or "corrupted double-linked list" in err_str:
-                    print(f"[WARN] Corrupt video {video_path}: {err_str}")
-                    _dbg("H3", "pose_extraction.py:89", "header_missing_or_corrupt", {"video_path": str(video_path), "error": err_str})
-                    return np.zeros((0, N_KEYPOINTS, N_CHANNELS), dtype=np.float32)
+                    print(f"[WARN] Corrupt video skipped: {video_path} ({err_str})")
+                    break
                 bad_reads += 1
                 if bad_reads >= 3:
-                    _dbg("H3", "pose_extraction.py:91", "bad_read_exception_break", {"video_path": str(video_path), "bad_reads": bad_reads, "frame_idx": frame_idx})
                     break
                 continue
 
             if not ret:
-                _dbg("H3", "pose_extraction.py:96", "read_ret_false_break", {"video_path": str(video_path), "frame_idx": frame_idx})
                 break
             if frame is None or frame.size == 0:
                 bad_reads += 1
                 if bad_reads >= 3:
-                    _dbg("H3", "pose_extraction.py:103", "empty_frame_break", {"video_path": str(video_path), "bad_reads": bad_reads, "frame_idx": frame_idx})
                     break
                 continue
 
             bad_reads = 0
-            frame_idx += 1
 
             try:
                 result = model.predict(
                     frame,
                     verbose=False,
-                    imgsz=256,
+                    imgsz=320,
                     conf=0.15,
                     device=device,
                     show=False,
                 )[0]
             except Exception as exc:
-                print(f"[WARN] YOLO predict failed frame {frame_idx} on {video_path}: {exc}")
-                _dbg("H4", "pose_extraction.py:122", "yolo_predict_exception", {"video_path": str(video_path), "frame_idx": frame_idx, "error": str(exc)})
-                # try to continue at next frame, don't crash entire video
+                print(f"[WARN] YOLO predict failed on {video_path}: {exc}")
                 continue
 
             pose = np.full((N_KEYPOINTS, N_CHANNELS), np.nan, dtype=np.float32)
@@ -193,24 +113,16 @@ def extract_pose_sequence(
 
             if len(frames_pose) % 200 == 0:
                 gc.collect()
-                # #region agent log
-                _dbg("H5", "pose_extraction.py:151", "periodic_gc", {"video_path": str(video_path), "frames_pose": len(frames_pose), "frame_idx": frame_idx})
-                # #endregion
 
     except Exception as exc:
         print(f"[WARN] Unexpected processing error {video_path}: {exc}")
-        _dbg("H3", "pose_extraction.py:144", "unexpected_processing_error", {"video_path": str(video_path), "error": str(exc)})
-        return np.zeros((0, N_KEYPOINTS, N_CHANNELS), dtype=np.float32)
+        frames_pose = []
 
     finally:
         if pbar:
             pbar.close()
         cap.release()
-        cv2.destroyAllWindows()
         gc.collect()
-        # #region agent log
-        _dbg("H1", "pose_extraction.py:159", "extract_pose_sequence_exit", {"video_path": str(video_path), "frames_pose": len(frames_pose), "frame_idx": frame_idx})
-        # #endregion
 
     if not frames_pose:
         return np.zeros((0, N_KEYPOINTS, N_CHANNELS), dtype=np.float32)
