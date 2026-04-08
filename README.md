@@ -1,61 +1,48 @@
 # fall-detection-lstm
-A deep learning-based fall detection system using LSTM and pose/keypoint data
 
-## Run on Kaggle
+AI-based fall detection system using pose sequences + BiLSTM/Attention.
+
+## Quick Start (Kaggle)
+
+1. Clone this repository to `/kaggle/working`.
+2. Add Le2i dataset in Kaggle Input.
+3. Run:
 
 ```bash
 pip install -r /kaggle/working/fall-detection-lstm/requirements.txt
-python -m src.kaggle_pipeline
+python -m src.kaggle_pipeline --strict
 ```
 
-Useful flags:
+## Pipeline Commands
 
 ```bash
-python -m src.kaggle_pipeline --skip-train
-python -m src.kaggle_pipeline --skip-extract
-python -m src.kaggle_pipeline --extract-only
-python -m src.kaggle_pipeline --train-only
+# full pipeline
 python -m src.kaggle_pipeline --strict
-python -m src.kaggle_pipeline --skip-sanity
+
+# only extract + feature engineering
+python -m src.kaggle_pipeline --extract-only
+
+# only training (requires extracted features)
+python -m src.kaggle_pipeline --train-only
+
+# final artifact checks
+python -m src.kaggle_sanity --strict
+
+# ablation study report
+python -m src.eval.ablation_runner
 ```
 
-Optional overrides:
+## Optional Environment Variables
 
 ```bash
 export LE2I_INPUT_ROOT=/kaggle/input/datasets/tuyenldvn/falldataset-imvia
 export LE2I_OUTPUT_ROOT=/kaggle/working
+export LE2I_RUN_SCENE_CV=1
 ```
 
-Artifacts are saved to:
+## Output Artifacts
+
 - `/kaggle/working/data/processed`
 - `/kaggle/working/data/features`
 - `/kaggle/working/models`
 - `/kaggle/working/reports`
-
-## Analysis and Inference
-
-After training the model, run detailed analysis:
-
-```bash
-python analysis_and_inference.py --analyze
-```
-
-This will:
-- Load test data and model
-- Compute precision, recall, F1-score per class
-- Analyze errors (false positives/negatives)
-- Compare with baseline (Logistic Regression on mean features)
-- Analyze training history and create detailed plots
-
-For inference on new videos:
-
-```bash
-python analysis_and_inference.py --inference --video_path /path/to/video.mp4
-```
-
-This will:
-- Extract pose keypoints from video
-- Compute features using sliding windows
-- Run real-time inference with post-processing
-- Measure performance (speed, accuracy)
-- Save results to CSV
