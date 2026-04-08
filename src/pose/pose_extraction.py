@@ -1,7 +1,9 @@
 """Extract per-frame pose from video using YOLO pose estimation."""
 
 import gc
+import hashlib
 import os
+import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
@@ -16,6 +18,45 @@ from src.config import FRAME_HEIGHT, FRAME_WIDTH, N_CHANNELS, N_KEYPOINTS
 # Stabilize OpenCV/FFmpeg on Kaggle to reduce native decode crashes.
 os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "threads;1")
 cv2.setNumThreads(0)
+
+TRANSCODE_FIRST = os.getenv("LE2I_TRANSCODE_FIRST", "1") == "1"
+
+
+def _transcode_video_for_safe_decode(video_path: Path) -> Optional[Path]:
+    """
+    Transcode problematic AVI to a clean MP4 to avoid OpenCV/FFmpeg native crashes.
+    Returns transcoded path if successful, else None.
+    """
+    cache_dir = Path("/kaggle/working") / "video_cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    vid_hash = hashlib.md5(str(video_path).encode("utf-8")).hexdigest()[:12]
+    out_path = cache_dir / f"{video_path.stem}_{vid_hash}.mp4"
+    if out_path.exists() and out_path.stat().st_size > 0:
+        return out_path
+
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-loglevel",
+        "error",
+        "-i",
+        str(video_path),
+        "-an",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "ultrafast",
+        "-crf",
+        "24",
+        str(out_path),
+    ]
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        if res.returncode == 0 and out_path.exists() and out_path.stat().st_size > 0:
+            return out_path
+    except Exception:
+        pass
+    return None
 
 
 def extract_pose_sequence(
@@ -33,12 +74,20 @@ def extract_pose_sequence(
     video_path = Path(video_path)
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
-    cap = cv2.VideoCapture(str(video_path), cv2.CAP_FFMPEG)
+    read_path = video_path
+    if TRANSCODE_FIRST and video_path.suffix.lower() == ".avi":
+        fixed_path = _transcode_video_for_safe_decode(video_path)
+        if fixed_path is None:
+            print(f"[WARN] Skip video (transcode failed): {video_path}")
+            return np.zeros((0, N_KEYPOINTS, N_CHANNELS), dtype=np.float32)
+        read_path = fixed_path
+
+    cap = cv2.VideoCapture(str(read_path), cv2.CAP_FFMPEG)
     if not cap.isOpened():
         # Fallback backend if FFmpeg backend is unavailable.
-        cap = cv2.VideoCapture(str(video_path), cv2.CAP_ANY)
+        cap = cv2.VideoCapture(str(read_path), cv2.CAP_ANY)
     if not cap.isOpened():
-        raise RuntimeError(f"Cannot open video: {video_path}")
+        raise RuntimeError(f"Cannot open video: {read_path}")
 
     frames_pose: list[np.ndarray] = []
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -56,7 +105,7 @@ def extract_pose_sequence(
             except Exception as exc:
                 err_str = str(exc)
                 if "Header missing" in err_str or "corrupted double-linked list" in err_str:
-                    print(f"[WARN] Corrupt video skipped: {video_path} ({err_str})")
+                    print(f"[WARN] Corrupt video skipped: {read_path} ({err_str})")
                     break
                 bad_reads += 1
                 if bad_reads >= 3:
